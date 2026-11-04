@@ -21,7 +21,7 @@ a{color:var(--acc2)}.hint{color:var(--mut);font-size:13px}
 .ok{color:var(--ok)}.bad{color:var(--bad)}
 ol{margin:6px 0 0;padding-left:20px}li{margin:3px 0}
 </style></head><body><div class="w">
-<h1>Admin <span>/</span> Skins</h1><p class="sub">Ajoute ou supprime un skin du portfolio. <a href="index.html">Retour au portfolio</a></p>
+<h1>Admin <span>/</span> Skins</h1><p class="sub">Ajoute ou supprime un skin du portfolio. <a href="index.html" id="back">Retour au portfolio</a></p>
 
 <div class="box" id="s1"><h2>1. Connexion (une seule fois)</h2>
 <div id="tokOff"><p class="hint" style="margin-top:0">Il faut un « jeton » GitHub qui autorise ce site à ajouter des fichiers dans ton dépôt. Il reste uniquement dans ton navigateur.</p>
@@ -76,10 +76,10 @@ async function refresh(){try{const ref=await gh('/git/ref/heads/'+BRANCH);const 
   r.children[0].textContent=d;r.children[1].textContent=by[d].length+' fichiers';
   const b=r.children[2];b.onclick=()=>{if(b.dataset.s!=='1'){b.dataset.s='1';b.textContent='Confirmer la suppression';setTimeout(()=>{b.dataset.s='';b.textContent='Supprimer'},4000);return}
    del(d,by[d])};L.appendChild(r)})}catch(e){$('list').textContent='Erreur : '+e.message}}
-async function commit(entries,msg){const ref=await gh('/git/ref/heads/'+BRANCH);const c=await gh('/git/commits/'+ref.object.sha);
+var commit=async function commit(entries,msg){const ref=await gh('/git/ref/heads/'+BRANCH);const c=await gh('/git/commits/'+ref.object.sha);
  const tree=await gh('/git/trees',{method:'POST',body:JSON.stringify({base_tree:c.tree.sha,tree:entries})});
  const nc=await gh('/git/commits',{method:'POST',body:JSON.stringify({message:msg,tree:tree.sha,parents:[ref.object.sha]})});
- await gh('/git/refs/heads/'+BRANCH,{method:'PATCH',body:JSON.stringify({sha:nc.sha})})}
+ await gh('/git/refs/heads/'+BRANCH,{method:'PATCH',body:JSON.stringify({sha:nc.sha})})};
 async function del(d,paths){log('Suppression de '+d+'…');try{await commit(paths.map(p=>({path:p,mode:'100644',type:'blob',sha:null})),'Supprime '+d);log('Supprimé. Le site se met à jour dans environ 1 minute.');refresh()}catch(e){log('Erreur : '+e.message)}}
 // ---- selection
 const JUNK=/(^|\/)(thumbs\.db|\.ds_store|desktop\.ini|__macosx)(\/|$)/i;
@@ -127,5 +127,7 @@ $('go').onclick=async()=>{if(!PICK)return;const name=$('fname').value.trim().rep
   PICK=null;$('sel').style.display='none';$('drop').style.display='';$('fDir').value='';$('fZip').value='';$('prev').value='';refresh()}
  catch(e){log('\nERREUR : '+e.message);alert('Erreur : '+e.message)}
  $('go').disabled=false;$('cancel').disabled=false};
+if(parent!==window){const b=$('back');if(b)b.style.display='none';document.body.style.paddingTop='44px'}
+const _commit=commit;commit=async function(e,m){await _commit(e,m);try{parent.postMessage({type:'skins-changed'},'*')}catch(_){}};
 checkTok();
 </script></body></html>

@@ -37,14 +37,22 @@ button:hover{border-color:#3a4050}button.on{border-color:var(--acc);color:var(--
 .row{display:flex;gap:6px;flex-wrap:wrap}
 footer{margin-top:36px;color:var(--mut);font:12px var(--mono)}
 @media (max-width:640px){.info{grid-template-columns:1fr}.hint{display:none}.stage{aspect-ratio:4/3}button{padding:5px 9px;font-size:12px}}
+.hdr{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.admb{opacity:.6;font-size:12px;padding:5px 10px}.admb:hover{opacity:1}
+#modal{position:fixed;inset:0;background:#000b;display:none;align-items:center;justify-content:center;padding:max(12px,env(safe-area-inset-top,0px)) 12px 12px;z-index:50}
+#modal.on{display:flex}
+.mbox{position:relative;width:min(820px,100%);height:min(900px,100%);background:var(--bg);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.mbox iframe{width:100%;height:100%;border:0;display:block;background:var(--bg)}
+#mclose{position:absolute;top:10px;right:10px;z-index:2;padding:4px 10px}
 </style>
 <div class="wrap">
-<header><h1>Kishi <span>/</span> Skins</h1><div class="sub">H1Z1 · skins d'armes · projet ROTK</div></header>
+<header><h1>Kishi <span>/</span> Skins</h1><div class="hdr"><div class="sub">H1Z1 · skins d'armes · projet ROTK</div><button id="adm" class="admb">Admin</button></div></header>
 <div class="stage" id="stage"><canvas id="c"></canvas><div class="badge" id="badge"></div><div class="load" id="load">Chargement…</div>
 <div class="ctl"><button id="play" class="on">Animation</button><button id="vl">Gauche</button><button id="vr">Droite</button><button id="vt">Dessus</button><button id="fs">Plein écran</button><span class="hint">Glisse pour tourner · molette pour zoomer</span></div></div>
 <div class="info"><div><h2 id="nm"></h2><p id="ds"></p></div><div class="row"><span class="chip" id="tg"></span><span class="chip a" id="an"></span></div></div>
 <div class="grid" id="grid"></div>
-<footer>Aperçu 3D approximatif de l'effet animé du jeu. Chaque skin est lu directement depuis ses fichiers (.adr, .dme/.obj, textures, animation). <a href="admin.html" style="color:inherit;opacity:.6">Admin</a></footer>
+<footer>Aperçu 3D approximatif de l'effet animé du jeu. Chaque skin est lu directement depuis ses fichiers (.adr, .dme/.obj, textures, animation).</footer>
+<div id="modal"><div class="mbox"><button id="mclose" aria-label="Fermer">✕</button><iframe id="mframe" title="Admin"></iframe></div></div>
 </div>
 <script>console.warn( 'Scripts "build/three.js" and "build/three.min.js" are deprecated with r150+, and will be removed with r160. Please use ES Modules or alternatives: https://threejs.org/docs/index.html#manual/en/introduction/Installation' );
 /**
@@ -202,15 +210,15 @@ async function show(id,push){const s=SKINS.find(x=>x.id===id)||SKINS[0];if(!s||c
  $('load').style.opacity=0;setTimeout(()=>{if(my===token)$('load').style.display='none'},300);
  if(push)try{history.replaceState(null,'','#'+encodeURIComponent(s.id))}catch(e){}
  if(!s.thumbDone){s.thumbDone=true;const card=document.querySelector('.card[data-id="'+CSS.escape(s.id)+'"] .th');if(card&&!card.style.backgroundImage){requestAnimationFrame(()=>{try{const c=document.createElement('canvas');c.width=520;c.height=260;const x=c.getContext('2d');x.fillStyle='#12151b';x.fillRect(0,0,520,260);x.drawImage(cv,0,0,520,260);card.style.backgroundImage='url('+c.toDataURL('image/jpeg',0.8)+')'}catch(e){}})}}}
-async function init(){let list;try{list=await listSkins()}catch(e){$('load').textContent='Erreur : '+(e.message||e);return}
- SKINS=list;if(!SKINS.length){$('load').textContent='Aucun skin dans le dossier skins/';return}
- const grid=$('grid');SKINS.forEach(s=>{const b=document.createElement('button');b.className='card';b.dataset.id=s.id;
+async function init(first=true){let list;try{list=await listSkins()}catch(e){$('load').textContent='Erreur : '+(e.message||e);return}
+ SKINS=list;if(!SKINS.length){if(first)$('load').textContent='Aucun skin pour l\'instant. Clique sur Admin pour en ajouter.';return}
+ const grid=$('grid');grid.innerHTML='';SKINS.forEach(s=>{const b=document.createElement('button');b.className='card';b.dataset.id=s.id;
   b.innerHTML='<div class="th"></div><div class="cb"><b></b><div class="row"><span class="chip"></span></div></div>';
   b.querySelector('b').textContent=pretty(s.folder);const tg=guessTag(s);const ch=b.querySelector('.chip');if(tg)ch.textContent=tg;else ch.remove();
   b.onclick=()=>{show(s.id,true);stage.scrollIntoView({behavior:'smooth',block:'nearest'})};grid.appendChild(b);
   getMeta(s).then(m=>{if(m.name)b.querySelector('b').textContent=m.name;if(m.tag){let c=b.querySelector('.chip');if(!c){c=document.createElement('span');c.className='chip';b.querySelector('.row').prepend(c)}c.textContent=m.tag}});
   thumbFor(s).then(u=>{if(u){b.querySelector('.th').style.backgroundImage='url("'+u+'")';s.thumbDone=true}})});
- const want=decodeURIComponent(location.hash.slice(1));show(SKINS.find(x=>x.id===want)?want:SKINS[0].id,false)}
+ if(first){const want=decodeURIComponent(location.hash.slice(1));show(SKINS.find(x=>x.id===want)?want:SKINS[0].id,false)}else document.querySelectorAll('.card').forEach(c=>c.classList.toggle('on',cur&&c.dataset.id===cur.id))}
 let playing=true,t0=performance.now(),tacc=0;$('play').onclick=()=>{playing=!playing;$('play').classList.toggle('on',playing)};
 const setV=(y,p)=>{yaw=y;pit=p;idle=false;cp()};$('vl').onclick=()=>setV(Math.PI/2,0.05);$('vr').onclick=()=>setV(-Math.PI/2,0.05);$('vt').onclick=()=>setV(Math.PI/2,1.5);
 $('fs').onclick=()=>{try{(stage.requestFullscreen||stage.webkitRequestFullscreen).call(stage).catch(()=>{})}catch(e){}};
@@ -224,6 +232,10 @@ cv.addEventListener('wheel',e=>{e.preventDefault();dist*=Math.exp(e.deltaY*0.001
 function rs(){const w=stage.clientWidth,h=stage.clientHeight;R.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix();if(cur&&g.attributes.position){frame();cp()}}
 new ResizeObserver(rs).observe(stage);rs();
 addEventListener('hashchange',()=>show(decodeURIComponent(location.hash.slice(1)),false));
+$('adm').onclick=()=>{$('mframe').src='admin.html?embed=1';$('modal').classList.add('on')};
+const closeM=()=>{$('modal').classList.remove('on');$('mframe').src='about:blank'};
+$('mclose').onclick=closeM;$('modal').addEventListener('click',e=>{if(e.target===$('modal'))closeM()});addEventListener('keydown',e=>{if(e.key==='Escape')closeM()});
+addEventListener('message',e=>{if(e.data&&e.data.type==='skins-changed')setTimeout(()=>init(false),1500)});
 init();
 (function loop(now){requestAnimationFrame(loop);const dt=(now-t0)/1000;t0=now;if(playing)tacc+=dt;if(idle)idleT+=dt*0.5;U.time.value=tacc;if(idle)cp();R.render(scene,cam)})(performance.now());
 </script>
