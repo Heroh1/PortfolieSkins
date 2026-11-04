@@ -188,7 +188,16 @@ async function libFind(s,dmeName){const M=LIB.files.filter(isModel);if(!M.length
  const idx=await libIndex();const mine=new Set(s.files.filter(f=>/\.(dds|png|jpe?g)$/i.test(f)).map(stem));
  if(idx.length){let best=null,sc=0;for(const r of idx){const n=r.tex.filter(t=>mine.has(t)).length;if(n>sc){sc=n;best=r}}
   if(best){const p=byStem(best.mesh);if(p)return p}}
- const hay=norm(s.folder+' '+s.files.join(' '));let bp=null,bl=0;
+ // 1) champ "model" dans skin.json  2) ressemblance des noms (mots communs)  3) nom de l'arme dans les fichiers
+ const meta=await getMeta(s);if(meta&&meta.model){const k=norm(meta.model);const c=M.filter(f=>norm(stem(f)).includes(k)).sort((a,b)=>a.length-b.length)[0];if(c)return c}
+ const STOP=new Set(['c','n','s','ds','pm','lod0','lod1','lod2','survivormale','survivorfemale','male','female','icon','wear','dds','png','common','props','weapons','weapon','norm','spec','diffuse','normal','1p','3p','skin','texture']);
+ const toks=x=>(x||'').replace(/([a-z])([A-Z])/g,'$1_$2').toLowerCase().split(/[^a-z0-9]+/).filter(t=>t&&!STOP.has(t));
+ const mt=new Set();for(const f of s.files.filter(f=>/\.(dds|png|jpe?g)$/i.test(f)&&!/icon\//i.test(f)))toks(stem(f)).forEach(t=>mt.add(t));toks(s.folder).forEach(t=>mt.add(t));
+ const GEN=new Set(['armor','chest','shirt','legs','pants','head','hands','hand','gloves','basic','hat','cap','mask','vest','jacket','top']);
+ let bp=null,bs=0;for(const f of M){const ft=toks(stem(f));if(!ft.length)continue;const sh=ft.filter(t=>mt.has(t)).length;if(!sh)continue;
+  const sc=sh-0.3*(ft.length-sh);const dist=ft.filter(t=>mt.has(t)&&!GEN.has(t)).length;if(dist&&(sh>=2||ft.length===1)&&(sc>bs||(sc===bs&&bp&&f.length<bp.length))){bs=sc;bp=f}}
+ if(bp)return bp
+ const hay=norm(s.folder+' '+s.files.join(' '));let bl=0;
  for(const f of M){const k=norm(stem(f).replace(/lod\d+$/,'').replace(/^(weapons?|survivormale)_?/,''));if(k.length>=2&&hay.includes(k)&&k.length>bl){bl=k.length;bp=f}}
  return bp}
 const urlOf=(s,p)=>(s.root||ROOT)+(s.folder===null?'':encodeURIComponent(s.folder)+'/')+p.split('/').map(encodeURIComponent).join('/');
@@ -218,7 +227,7 @@ async function buildSkin(s){const map=fileMap(s),res={notes:[],warn:[]};
  if(mp)try{mesh=await tryMesh(mp);res.notes.push('mesh '+mp.split('/').pop())}catch(e){res.notes.push('mesh illisible ('+(e.message||e)+')')}
  if(!mesh&&LIB.files.length){try{const lp=await libFind(s,dmeName);if(lp){mesh=/\.obj$/i.test(lp)?parseOBJ(await ftext(LIB,lp)):/\.glb$/i.test(lp)?parseGLB(await fbuf(LIB,lp)):parseDME(await fbuf(LIB,lp));res.notes.push('mesh bibliotheque '+lp.split('/').pop())}}catch(e){res.notes.push('mesh bibliotheque illisible ('+(e.message||e)+')')}}
  if(!mesh){const n=((dmeName||'')+' '+s.files.join(' ')).toLowerCase();const k=/m24/.test(n)?'m24':/ak47|ak_47/.test(n)?'ak':null;if(k){mesh=BUILTIN[k];res.notes.push('mesh integre '+k)}}
- if(!mesh)throw new Error('Aucun modele (.dme/.obj) lisible dans ce dossier');
+ if(!mesh)throw new Error(LIB.files.length?'Aucun modele trouve (ni dans le dossier, ni dans la bibliotheque). Ajoute "model":"NomDuModele" dans skin.json':'Aucun modele (.dme/.obj/.glb) dans ce dossier et la bibliotheque est vide (Admin > Bibliotheque de modeles)');
  res.mesh=mesh;
  // textures
  if(!cName){const p=s.files.find(f=>/_c\.(dds|png|jpe?g)$/i.test(f));if(p)cName=p.split('/').pop()}

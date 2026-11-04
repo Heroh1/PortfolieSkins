@@ -44,6 +44,7 @@ ol{margin:6px 0 0;padding-left:20px}li{margin:3px 0}
 <p class="hint" id="selInfo"></p>
 <label>Nom du dossier sur le site (sans accents, ex: M24_Sakura)</label><input type="text" id="fname">
 <label>Titre affiché (optionnel)</label><input type="text" id="title" placeholder="M24 Sakura">
+<label>Modele de base si le skin n'a pas de .dme/.obj/.glb (optionnel, ex: Armor_Badass_Basic, Shirt_Henley, M24)</label><input type="text" id="mdl" placeholder="mot du nom du modele dans la bibliotheque">
 <label>Arme / tag (optionnel)</label><input type="text" id="tag" placeholder="M24">
 <label>Description (optionnel)</label><textarea id="desc" rows="2"></textarea>
 <label>Image de la carte (optionnel, sinon capture automatique)</label><input type="file" id="prev" accept="image/*">
@@ -143,7 +144,7 @@ dz.addEventListener('drop',async e=>{try{const items=[...e.dataTransfer.items];c
 // ---- envoi
 const b64=async blob=>{const buf=new Uint8Array(await blob.arrayBuffer());let s='';const C=0x8000;for(let i=0;i<buf.length;i+=C)s+=String.fromCharCode.apply(null,buf.subarray(i,i+C));return btoa(s)};
 $('go').onclick=async()=>{if(!PICK)return;const name=$('fname').value.trim().replace(/[^\w.\-]+/g,'_');if(!name){alert('Donne un nom de dossier');return}
- const files=libOnly(PICK.files).slice();const meta={};if($('title').value.trim())meta.name=$('title').value.trim();if($('tag').value.trim())meta.tag=$('tag').value.trim();if($('desc').value.trim())meta.description=$('desc').value.trim();
+ const files=libOnly(PICK.files).slice();const meta={};if($('title').value.trim())meta.name=$('title').value.trim();if($('tag').value.trim())meta.tag=$('tag').value.trim();if($('mdl').value.trim())meta.model=$('mdl').value.trim();if($('desc').value.trim())meta.description=$('desc').value.trim();
  if(Object.keys(meta).length&&!files.some(f=>/^skin\.json$/i.test(f.path)))files.push({path:'skin.json',blob:new Blob([JSON.stringify(meta,null,1)])});
  const pv=$('prev').files[0];if(pv){const ext=(pv.name.split('.').pop()||'png').toLowerCase();files.push({path:'preview.'+ext,blob:pv})}
  if(files.some(f=>f.blob.size>95*1024*1024)){alert('Un fichier dépasse 95 Mo, GitHub le refuse.');return}
