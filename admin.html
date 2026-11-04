@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin skins</title>
+<style>
+:root{--bg:#0f1115;--panel:#171a20;--line:#272b34;--fg:#eceef2;--mut:#8b92a1;--acc:#ff7eb6;--acc2:#8fd3f0;--ok:#7fe3a4;--bad:#ff7b7b;color-scheme:dark}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,'Segoe UI',sans-serif;padding:24px 16px 60px}
+.w{max-width:760px;margin:0 auto}h1{margin:0 0 4px;font-size:28px}h1 span{color:var(--acc)}.sub{color:var(--mut);margin:0 0 22px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
+h2{margin:0 0 10px;font-size:16px}
+input[type=text],input[type=password],textarea{width:100%;background:#0f1115;color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:9px 11px;font:inherit}
+label{display:block;color:var(--mut);font-size:13px;margin:10px 0 4px}
+button{background:#232833;color:var(--fg);border:1px solid #343b4a;border-radius:8px;padding:9px 14px;font:inherit;cursor:pointer}
+button:hover{border-color:#4a5368}button.p{background:var(--acc);color:#1a0d14;border-color:var(--acc);font-weight:700}button:disabled{opacity:.45;cursor:default}
+button.d{color:var(--bad)}
+.drop{border:2px dashed #3a4050;border-radius:12px;padding:26px 14px;text-align:center;color:var(--mut)}.drop.on{border-color:var(--acc);color:var(--fg)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.grow{flex:1;min-width:0}
+a{color:var(--acc2)}.hint{color:var(--mut);font-size:13px}
+.log{font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;color:var(--mut);max-height:220px;overflow:auto;margin-top:10px}
+.bar{height:8px;background:#0f1115;border-radius:99px;overflow:hidden;margin-top:10px;display:none}.bar i{display:block;height:100%;width:0;background:var(--acc)}
+.sk{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)}.sk:first-child{border-top:0}
+.ok{color:var(--ok)}.bad{color:var(--bad)}
+ol{margin:6px 0 0;padding-left:20px}li{margin:3px 0}
+</style></head><body><div class="w">
+<h1>Admin <span>/</span> Skins</h1><p class="sub">Ajoute ou supprime un skin du portfolio. <a href="index.html">Retour au portfolio</a></p>
+
+<div class="box" id="s1"><h2>1. Connexion (une seule fois)</h2>
+<div id="tokOff"><p class="hint" style="margin-top:0">Il faut un « jeton » GitHub qui autorise ce site à ajouter des fichiers dans ton dépôt. Il reste uniquement dans ton navigateur.</p>
+<ol class="hint"><li>Ouvre <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com/settings/personal-access-tokens/new</a></li>
+<li>Nom : <b>portfolio</b>. Expiration : à ton choix.</li>
+<li>« Repository access » : <b>Only select repositories</b>, puis choisis <b>PortfolieSkins</b>.</li>
+<li>« Permissions », « Repository permissions » : <b>Contents</b> en <b>Read and write</b>.</li>
+<li>Clique sur <b>Generate token</b>, copie-le et colle-le ici.</li></ol>
+<label>Jeton</label><div class="row"><input class="grow" type="password" id="tok" placeholder="github_pat_..." autocomplete="off"><button class="p" id="saveTok">Enregistrer</button></div></div>
+<div id="tokOn" style="display:none" class="row"><span class="ok grow" id="who"></span><button id="out">Changer de jeton</button></div>
+</div>
+
+<div class="box" id="s2" style="opacity:.5;pointer-events:none"><h2>2. Ajouter un skin</h2>
+<div class="drop" id="drop">Glisse ici le <b>dossier</b> du skin ou son <b>.zip</b><div class="hint" style="margin-top:8px">ou utilise les boutons</div>
+<div class="row" style="justify-content:center;margin-top:10px"><button id="pickDir">Choisir un dossier</button><button id="pickZip">Choisir un .zip</button></div></div>
+<input type="file" id="fDir" webkitdirectory multiple hidden><input type="file" id="fZip" accept=".zip" hidden>
+<div id="sel" style="display:none">
+<p class="hint" id="selInfo"></p>
+<label>Nom du dossier sur le site (sans accents, ex: M24_Sakura)</label><input type="text" id="fname">
+<label>Titre affiché (optionnel)</label><input type="text" id="title" placeholder="M24 Sakura">
+<label>Arme / tag (optionnel)</label><input type="text" id="tag" placeholder="M24">
+<label>Description (optionnel)</label><textarea id="desc" rows="2"></textarea>
+<label>Image de la carte (optionnel, sinon capture automatique)</label><input type="file" id="prev" accept="image/*">
+<div class="row" style="margin-top:14px"><button class="p" id="go">Envoyer sur le site</button><button id="cancel">Annuler</button></div>
+</div>
+<div class="bar" id="bar"><i id="barI"></i></div><div class="log" id="log"></div>
+</div>
+
+<div class="box" id="s3" style="opacity:.5;pointer-events:none"><h2>3. Skins en ligne</h2><div id="list" class="hint">Chargement…</div></div>
+</div>
+<script>
+const REPO='Heroh1/PortfolieSkins',BRANCH='main',ROOT='skins/';
+const $=id=>document.getElementById(id);
+let TOKEN=null,PICK=null; // PICK={folder,files:[{path,blob}]}
+try{TOKEN=localStorage.getItem('gh_tok')}catch(e){}
+const log=s=>{const l=$('log');l.textContent+=s+'\n';l.scrollTop=l.scrollHeight};
+async function gh(path,opt={}){const r=await fetch('https://api.github.com/repos/'+REPO+path,{...opt,headers:{'Authorization':'Bearer '+TOKEN,'Accept':'application/vnd.github+json','Content-Type':'application/json',...(opt.headers||{})}});
+ if(!r.ok){let m='';try{m=(await r.json()).message}catch(e){}throw new Error('GitHub '+r.status+(m?' : '+m:''))}
+ return r.status===204?null:r.json()}
+async function checkTok(){if(!TOKEN){$('tokOff').style.display='';$('tokOn').style.display='none';return}
+ try{const r=await gh('');if(r.permissions&&!r.permissions.push)throw new Error('Ce jeton ne peut pas modifier le dépôt (Contents: Read and write).');
+  $('tokOff').style.display='none';$('tokOn').style.display='';$('who').textContent='Connecté au dépôt '+r.full_name;
+  $('s2').style.opacity=1;$('s2').style.pointerEvents='auto';$('s3').style.opacity=1;$('s3').style.pointerEvents='auto';refresh()}
+ catch(e){alert('Jeton refusé : '+e.message);TOKEN=null;try{localStorage.removeItem('gh_tok')}catch(_){}$('tokOff').style.display='';$('tokOn').style.display='none'}}
+$('saveTok').onclick=()=>{const v=$('tok').value.trim();if(!v)return;TOKEN=v;try{localStorage.setItem('gh_tok',v)}catch(e){}$('tok').value='';checkTok()};
+$('out').onclick=()=>{TOKEN=null;try{localStorage.removeItem('gh_tok')}catch(e){}location.reload()};
+// ---- liste / suppression
+async function refresh(){try{const ref=await gh('/git/ref/heads/'+BRANCH);const c=await gh('/git/commits/'+ref.object.sha);const t=await gh('/git/trees/'+c.tree.sha+'?recursive=1');
+ const by={};t.tree.filter(x=>x.type==='blob'&&x.path.startsWith(ROOT)&&x.path.indexOf('/',ROOT.length)>0).forEach(x=>{const d=x.path.slice(ROOT.length).split('/')[0];(by[d]=by[d]||[]).push(x.path)});
+ const L=$('list');L.innerHTML='';const ks=Object.keys(by).sort();if(!ks.length){L.textContent='Aucun skin.';return}
+ ks.forEach(d=>{const r=document.createElement('div');r.className='sk';r.innerHTML='<span class="grow"></span><span class="hint"></span><button class="d">Supprimer</button>';
+  r.children[0].textContent=d;r.children[1].textContent=by[d].length+' fichiers';
+  const b=r.children[2];b.onclick=()=>{if(b.dataset.s!=='1'){b.dataset.s='1';b.textContent='Confirmer la suppression';setTimeout(()=>{b.dataset.s='';b.textContent='Supprimer'},4000);return}
+   del(d,by[d])};L.appendChild(r)})}catch(e){$('list').textContent='Erreur : '+e.message}}
+async function commit(entries,msg){const ref=await gh('/git/ref/heads/'+BRANCH);const c=await gh('/git/commits/'+ref.object.sha);
+ const tree=await gh('/git/trees',{method:'POST',body:JSON.stringify({base_tree:c.tree.sha,tree:entries})});
+ const nc=await gh('/git/commits',{method:'POST',body:JSON.stringify({message:msg,tree:tree.sha,parents:[ref.object.sha]})});
+ await gh('/git/refs/heads/'+BRANCH,{method:'PATCH',body:JSON.stringify({sha:nc.sha})})}
+async function del(d,paths){log('Suppression de '+d+'…');try{await commit(paths.map(p=>({path:p,mode:'100644',type:'blob',sha:null})),'Supprime '+d);log('Supprimé. Le site se met à jour dans environ 1 minute.');refresh()}catch(e){log('Erreur : '+e.message)}}
+// ---- selection
+const JUNK=/(^|\/)(thumbs\.db|\.ds_store|desktop\.ini|__macosx)(\/|$)/i;
+function setPick(folder,files){files=files.filter(f=>!JUNK.test(f.path));PICK={folder,files};
+ const tot=files.reduce((a,f)=>a+f.blob.size,0);const big=files.find(f=>f.blob.size>95*1024*1024);
+ $('selInfo').textContent=files.length+' fichiers, '+(tot/1048576).toFixed(1)+' Mo'+(big?'  (fichier trop gros : '+big.path+')':'');
+ $('fname').value=folder.replace(/[^\w.\-]+/g,'_');$('sel').style.display='block';$('drop').style.display='none'}
+$('pickDir').onclick=()=>$('fDir').click();$('pickZip').onclick=()=>$('fZip').click();
+$('fDir').onchange=e=>{const fl=[...e.target.files];if(!fl.length)return;const root=fl[0].webkitRelativePath.split('/')[0];
+ setPick(root,fl.map(f=>({path:f.webkitRelativePath.split('/').slice(1).join('/'),blob:f})))};
+$('fZip').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const fs=await readZip(await f.arrayBuffer());setPick(f.name.replace(/\.zip$/i,''),fs)}catch(err){alert('ZIP illisible : '+err.message)}};
+$('cancel').onclick=()=>{PICK=null;$('sel').style.display='none';$('drop').style.display='';$('fDir').value='';$('fZip').value=''};
+async function readZip(buf){const dv=new DataView(buf),u8=new Uint8Array(buf);let e=u8.length-22;while(e>=0&&dv.getUint32(e,true)!==0x06054b50)e--;if(e<0)throw new Error('zip invalide');
+ const n=dv.getUint16(e+10,true);let p=dv.getUint32(e+16,true);const out=[];
+ for(let i=0;i<n;i++){if(dv.getUint32(p,true)!==0x02014b50)break;const m=dv.getUint16(p+10,true),cs=dv.getUint32(p+20,true),nl=dv.getUint16(p+28,true),xl=dv.getUint16(p+30,true),cl=dv.getUint16(p+32,true),lo=dv.getUint32(p+42,true);
+  const name=new TextDecoder().decode(u8.subarray(p+46,p+46+nl));p+=46+nl+xl+cl;if(name.endsWith('/')||/__macosx/i.test(name))continue;
+  const ds=lo+30+dv.getUint16(lo+26,true)+dv.getUint16(lo+28,true);const raw=u8.subarray(ds,ds+cs);let data;
+  if(m===0)data=raw;else{const s=new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw'));data=new Uint8Array(await new Response(s).arrayBuffer())}
+  out.push({path:name,blob:new Blob([data])})}
+ // enleve un dossier racine commun
+ const first=out.length&&out[0].path.split('/')[0];if(out.length&&out.every(f=>f.path.includes('/')&&f.path.split('/')[0]===first))out.forEach(f=>f.path=f.path.split('/').slice(1).join('/'));
+ return out}
+// drag & drop (dossiers ou zip)
+const dz=$('drop');['dragenter','dragover'].forEach(t=>dz.addEventListener(t,e=>{e.preventDefault();dz.classList.add('on')}));['dragleave','drop'].forEach(t=>dz.addEventListener(t,e=>{e.preventDefault();dz.classList.remove('on')}));
+dz.addEventListener('drop',async e=>{try{const items=[...e.dataTransfer.items];const ens=items.map(i=>i.webkitGetAsEntry&&i.webkitGetAsEntry()).filter(Boolean);
+ const zip=[...e.dataTransfer.files].find(f=>/\.zip$/i.test(f.name));if(zip){setPick(zip.name.replace(/\.zip$/i,''),await readZip(await zip.arrayBuffer()));return}
+ if(ens.length===1&&ens[0].isDirectory){const files=[];const walk=async(en,pre)=>{if(en.isFile){await new Promise(r=>en.file(f=>{files.push({path:pre+en.name,blob:f});r()},r))}else{const rd=en.createReader();let all=[];while(true){const b=await new Promise(r=>rd.readEntries(r,()=>r([])));if(!b.length)break;all=all.concat(b)}for(const c of all)await walk(c,pre+en.name+'/')}};
+  for(const c of await new Promise(r=>{const rd=ens[0].createReader();let all=[];(function g(){rd.readEntries(b=>{if(!b.length)r(all);else{all=all.concat(b);g()}},()=>r(all))})()}))await walk(c,'');
+  setPick(ens[0].name,files);return}
+ alert('Glisse un seul dossier ou un .zip. Sinon utilise les boutons.')}catch(err){alert('Lecture impossible : '+err.message+'. Utilise les boutons.')}});
+// ---- envoi
+const b64=async blob=>{const buf=new Uint8Array(await blob.arrayBuffer());let s='';const C=0x8000;for(let i=0;i<buf.length;i+=C)s+=String.fromCharCode.apply(null,buf.subarray(i,i+C));return btoa(s)};
+$('go').onclick=async()=>{if(!PICK)return;const name=$('fname').value.trim().replace(/[^\w.\-]+/g,'_');if(!name){alert('Donne un nom de dossier');return}
+ const files=PICK.files.slice();const meta={};if($('title').value.trim())meta.name=$('title').value.trim();if($('tag').value.trim())meta.tag=$('tag').value.trim();if($('desc').value.trim())meta.description=$('desc').value.trim();
+ if(Object.keys(meta).length&&!files.some(f=>/^skin\.json$/i.test(f.path)))files.push({path:'skin.json',blob:new Blob([JSON.stringify(meta,null,1)])});
+ const pv=$('prev').files[0];if(pv){const ext=(pv.name.split('.').pop()||'png').toLowerCase();files.push({path:'preview.'+ext,blob:pv})}
+ if(files.some(f=>f.blob.size>95*1024*1024)){alert('Un fichier dépasse 95 Mo, GitHub le refuse.');return}
+ $('go').disabled=true;$('cancel').disabled=true;$('bar').style.display='block';$('barI').style.width='0';$('log').textContent='';
+ try{log('Envoi de '+files.length+' fichiers vers skins/'+name+'…');const ents=[];let done=0;let idx=0;
+  const worker=async()=>{while(idx<files.length){const f=files[idx++];const r=await gh('/git/blobs',{method:'POST',body:JSON.stringify({content:await b64(f.blob),encoding:'base64'})});
+   ents.push({path:ROOT+name+'/'+f.path,mode:'100644',type:'blob',sha:r.sha});done++;$('barI').style.width=(done/files.length*90)+'%';log(' + '+f.path)}};
+  await Promise.all([worker(),worker(),worker()]);
+  log('Publication…');await commit(ents,'Ajoute le skin '+name);$('barI').style.width='100%';
+  log('\nTERMINE. Le site se met à jour dans environ 1 minute, puis le skin apparait sur la page d\'accueil (lien : index.html#'+name+').');
+  PICK=null;$('sel').style.display='none';$('drop').style.display='';$('fDir').value='';$('fZip').value='';$('prev').value='';refresh()}
+ catch(e){log('\nERREUR : '+e.message);alert('Erreur : '+e.message)}
+ $('go').disabled=false;$('cancel').disabled=false};
+checkTok();
+</script></body></html>
