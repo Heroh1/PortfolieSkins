@@ -97,9 +97,17 @@ async function refresh(){try{const ref=await gh('/git/ref/heads/'+BRANCH);const 
  for(const R of ROOTS){const by={};t.tree.filter(x=>x.type==='blob'&&x.path.startsWith(R)&&x.path.indexOf('/',R.length)>0).forEach(x=>{const d=x.path.slice(R.length).split('/')[0];(by[d]=by[d]||[]).push(x.path)});
   Object.keys(by).sort().forEach(d=>{any=true;const r=document.createElement('div');r.className='sk';r.innerHTML='<span class="grow"></span><span class="hint"></span><button class="d">Supprimer</button>';
    r.children[0].textContent=(R==='armes/'?'[arme] ':'')+d;r.children[1].textContent=by[d].length+' fichiers';
-   const b=r.children[2];b.onclick=()=>{if(b.dataset.s!=='1'){b.dataset.s='1';b.textContent='Confirmer la suppression';setTimeout(()=>{b.dataset.s='';b.textContent='Supprimer'},4000);return}
+   if(R==='skins/'){const m=document.createElement('button');m.textContent='Modele de base';m.onclick=()=>setModel(d);r.insertBefore(m,r.children[2])}
+   const b=r.children[r.children.length-1];b.onclick=()=>{if(b.dataset.s!=='1'){b.dataset.s='1';b.textContent='Confirmer la suppression';setTimeout(()=>{b.dataset.s='';b.textContent='Supprimer'},4000);return}
     del(d,by[d])};L.appendChild(r)})}
  if(!any)L.textContent='Rien en ligne.'}catch(e){$('list').textContent='Erreur : '+e.message}}
+
+async function setModel(d){const L=$('list');const cur=[...L.children].find(x=>x.firstChild&&x.firstChild.textContent===d);if(!cur||cur.querySelector('.mi'))return;
+ const row=document.createElement('div');row.className='sk mi';row.innerHTML='<input type="text" class="grow" placeholder="ex: ShortShorts, Henley, Badass_Basic"><button class="p">Enregistrer</button>';cur.after(row);
+ row.querySelector('button').onclick=async()=>{const v=row.querySelector('input').value.trim();if(!v)return;
+  try{let meta={};try{const f=await gh('/contents/skins/'+d+'/skin.json?ref='+BRANCH);meta=JSON.parse(decodeURIComponent(escape(atob(f.content.replace(/\n/g,'')))))}catch(e){}
+   meta.model=v;const bl=await gh('/git/blobs',{method:'POST',body:JSON.stringify({content:btoa(unescape(encodeURIComponent(JSON.stringify(meta,null,1)))),encoding:'base64'})});
+   await commit([{path:'skins/'+d+'/skin.json',mode:'100644',type:'blob',sha:bl.sha}],'Modele de base pour '+d);log('Modele de base enregistre pour '+d+'. Visible sur le site dans environ 1 minute.');row.remove()}catch(e){log('Erreur : '+e.message)}}}
 var commit=async function commit(entries,msg){const ref=await gh('/git/ref/heads/'+BRANCH);const c=await gh('/git/commits/'+ref.object.sha);
  const tree=await gh('/git/trees',{method:'POST',body:JSON.stringify({base_tree:c.tree.sha,tree:entries})});
  const nc=await gh('/git/commits',{method:'POST',body:JSON.stringify({message:msg,tree:tree.sha,parents:[ref.object.sha]})});
