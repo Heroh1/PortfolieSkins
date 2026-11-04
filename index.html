@@ -49,7 +49,7 @@ footer{margin-top:36px;color:var(--mut);font:12px var(--mono)}
 <header><h1>Kishi <span>/</span> Skins</h1><div class="hdr"><div class="sub">H1Z1 · skins d'armes · projet ROTK</div><button id="adm" class="admb">Admin</button></div></header>
 <div class="stage" id="stage"><canvas id="c"></canvas><div class="badge" id="badge"></div><div class="load" id="load">Chargement…</div>
 <div class="ctl"><button id="play" class="on">Animation</button><button id="vl">Gauche</button><button id="vr">Droite</button><button id="vt">Dessus</button><button id="fs">Plein écran</button><span class="hint">Glisse pour tourner · molette pour zoomer</span></div></div>
-<div class="info"><div><h2 id="nm"></h2><p id="ds"></p></div><div class="row"><span class="chip" id="tg"></span><span class="chip a" id="an"></span></div></div>
+<div class="info"><div><h2 id="nm"></h2><p id="ds"></p><p id="warn" style="color:#ff9b7b;font-size:13px"></p></div><div class="row"><span class="chip" id="tg"></span><span class="chip a" id="an"></span></div></div>
 <div class="grid" id="grid"></div>
 <footer>Aperçu 3D approximatif de l'effet animé du jeu. Chaque skin est lu directement depuis ses fichiers (.adr, .dme/.obj, textures, animation).</footer>
 <div id="modal"><div class="mbox"><button id="mclose" aria-label="Fermer">✕</button><iframe id="mframe" title="Admin"></iframe></div></div>
@@ -97,6 +97,7 @@ const tl=new THREE.TextureLoader();
 function decodeDDS(buf){const dv=new DataView(buf);if(dv.getUint32(0,true)!==0x20534444)throw new Error('pas un DDS');
  const h=dv.getUint32(12,true),w=dv.getUint32(16,true);const cc=String.fromCharCode(dv.getUint8(84),dv.getUint8(85),dv.getUint8(86),dv.getUint8(87));
  const out=new Uint8Array(w*h*4);let off=128;
+ if(cc==='DXT1'||cc==='DXT3'||cc==='DXT5'){const need=128+Math.ceil(w/4)*Math.ceil(h/4)*(cc==='DXT1'?8:16);if(buf.byteLength<need)throw new Error('fichier incomplet ('+buf.byteLength+' octets sur '+need+')')}
  if(cc==='DXT1'||cc==='DXT3'||cc==='DXT5'){const bs=cc==='DXT1'?8:16,pal=new Uint8Array(16);
   for(let by=0;by<h;by+=4)for(let bx=0;bx<w;bx+=4){
    const co=off+(bs-8),c0=dv.getUint16(co,true),c1=dv.getUint16(co+2,true);
@@ -164,17 +165,20 @@ function guessTag(s){const n=s.files.join(' ').toLowerCase();return /m24/.test(n
 async function thumbFor(s){const p=s.files.find(f=>/(^|\/)(preview|apercu|cover|thumb)[^\/]*\.(png|jpe?g|webp)$/i.test(f));if(p)return urlOf(s,p);
  const ic=s.files.find(f=>/icon\/[^\/]+\.dds$/i.test(f)||/_icon\.dds$/i.test(f));if(ic)try{return ddsToDataURL(await (await fetch(urlOf(s,ic))).arrayBuffer(),520)}catch(e){}return null}
 // ---------- charge un skin
-async function texFrom(s,map,name,rep){const p=map.get((name||'').toLowerCase().split(/[\\/]/).pop());if(!p)return null;const u=urlOf(s,p);
- if(/\.dds$/i.test(p)){return ddsToTexture(await (await fetch(u)).arrayBuffer(),rep)}
- return new Promise(res=>tl.load(u,t=>{t.flipY=false;if(rep)t.wrapS=t.wrapT=THREE.RepeatWrapping;t.minFilter=THREE.LinearMipmapLinearFilter;t.generateMipmaps=true;t.anisotropy=8;res(t)},undefined,()=>res(null)))}
-async function buildSkin(s){const map=fileMap(s),res={notes:[]};
+async function fbuf(s,p){const r=await fetch(urlOf(s,p));if(!r.ok)throw new Error(p+' introuvable (erreur '+r.status+')');return r.arrayBuffer()}
+async function ftext(s,p){const r=await fetch(urlOf(s,p));if(!r.ok)throw new Error(p+' introuvable (erreur '+r.status+')');return r.text()}
+async function texFrom(s,map,name,rep,warn){const p=map.get((name||'').toLowerCase().split(/[\\/]/).pop());if(!p){if(name&&warn)warn.push(name+' absent du dossier');return null}
+ try{if(/\.dds$/i.test(p)){return ddsToTexture(await fbuf(s,p),rep)}
+ return await new Promise((res,rej)=>tl.load(urlOf(s,p),t=>{t.flipY=false;if(rep)t.wrapS=t.wrapT=THREE.RepeatWrapping;t.minFilter=THREE.LinearMipmapLinearFilter;t.generateMipmaps=true;t.anisotropy=8;res(t)},undefined,()=>rej(new Error('image illisible'))))}
+ catch(e){if(warn)warn.push(p.split('/').pop()+' : '+(e.message||e));return null}}
+async function buildSkin(s){const map=fileMap(s),res={notes:[],warn:[]};
  const adrs=s.files.filter(f=>/\.adr$/i.test(f)).sort((a,b)=>{const k=x=>/3p|ground/i.test(x)?1:0;return k(a)-k(b)||a.length-b.length});
  let dmeName=null,cName=null,nName=null,eff=null,adrDoc=null;
- if(adrs.length){adrDoc=new DOMParser().parseFromString(await (await fetch(urlOf(s,adrs[0]))).text(),'text/xml');
+ if(adrs.length){adrDoc=new DOMParser().parseFromString(await ftext(s,adrs[0]),'text/xml');
   const b=adrDoc.getElementsByTagName('Base')[0];if(b)dmeName=b.getAttribute('fileName');
   for(const a of adrDoc.getElementsByTagName('Alias')){const h=a.getAttribute('semanticHash'),t=a.getAttribute('textureName');if(h==='-1295769314')cName=t;else if(h==='789998085')nName=t}}
  // mesh
- let mesh=null;const tryMesh=async p=>{const u=urlOf(s,p);return /\.obj$/i.test(p)?parseOBJ(await (await fetch(u)).text()):parseDME(await (await fetch(u)).arrayBuffer())};
+ let mesh=null;const tryMesh=async p=>{return /\.obj$/i.test(p)?parseOBJ(await ftext(s,p)):parseDME(await fbuf(s,p))};
  let mp=dmeName&&map.get(dmeName.toLowerCase());
  if(!mp){const c=s.files.filter(f=>/\.(dme|obj)$/i.test(f));mp=c.find(f=>/lod0|1p/i.test(f))||c[0]}
  if(mp)try{mesh=await tryMesh(mp);res.notes.push('mesh '+mp.split('/').pop())}catch(e){res.notes.push('mesh illisible ('+(e.message||e)+')')}
@@ -184,27 +188,27 @@ async function buildSkin(s){const map=fileMap(s),res={notes:[]};
  // textures
  if(!cName){const p=s.files.find(f=>/_c\.(dds|png|jpe?g)$/i.test(f));if(p)cName=p.split('/').pop()}
  if(!nName){const p=s.files.find(f=>/_n\.(dds|png)$/i.test(f));if(p)nName=p.split('/').pop()}
- res.C=await texFrom(s,map,cName,false);res.N=await texFrom(s,map,nName,false);
+ res.C=await texFrom(s,map,cName,false,res.warn);res.N=await texFrom(s,map,nName,false,res.warn);
  // animation
- const xmls=await Promise.all(s.files.filter(f=>/\.xml$/i.test(f)).map(async f=>new DOMParser().parseFromString(await (await fetch(urlOf(s,f))).text(),'text/xml')));
+ const xmls=await Promise.all(s.files.filter(f=>/\.xml$/i.test(f)).map(async f=>new DOMParser().parseFromString(await ftext(s,f).catch(()=>'<x/>'),'text/xml')));
  let eid=null;const el=adrDoc&&adrDoc.getElementsByTagName('EffectList')[0];
  if(el){const ce=el.getElementsByTagName('Effect')[0];if(ce){const cn=ce.getAttribute('name');for(const x of xmls)for(const c of x.getElementsByTagName('EffectDefinition'))if(c.getAttribute('name')===cn){const e=c.getElementsByTagName('Effect')[0];if(e)eid=e.getAttribute('effectId')}}}
  let def=null;if(el||!adrDoc)for(const x of xmls)for(const c of x.getElementsByTagName('EffectDefinition'))if(c.getAttribute('EffectName')==='Multiscroll'&&(eid===null||c.getAttribute('id')===eid)&&!def)def=c;
  if(def){const P={};[...def.getElementsByTagName('Parameter')].forEach(p=>P[p.getAttribute('name')]=p.getAttribute('value'));
   const n=v=>(v||'').split(/\s+/).map(Number);const til=n(P.uvTiling),scr=n(P.uvScroll);
   res.fx={b:[+P.brightness1||0,+P.brightness2||0],til:til.length===4?til:[3.5,3.5,5,5],scr:scr.length===4?scr:[-0.08,0.012,-0.18,0.02]};
-  res.t1=await texFrom(s,map,P.patternTexture,true);res.t2=await texFrom(s,map,P.patternTexture2,true);if(!res.t1&&!res.t2)res.fx=null}
+  res.t1=await texFrom(s,map,P.patternTexture,true,res.warn);res.t2=await texFrom(s,map,P.patternTexture2,true,res.warn);if(!res.t1&&!res.t2)res.fx=null}
  return res}
 let cur=null,token=0;
 async function show(id,push){const s=SKINS.find(x=>x.id===id)||SKINS[0];if(!s||cur===s)return;cur=s;const my=++token;
  $('load').textContent='Chargement…';$('load').style.opacity=1;$('load').style.display='flex';
- let r;try{r=await buildSkin(s)}catch(e){if(my===token){$('load').textContent='Erreur : '+(e.message||e)}return}
+ let r;try{r=await buildSkin(s)}catch(e){if(my===token){$('load').textContent='Erreur sur ce skin : '+(e.message||e)}return}
  if(my!==token)return;const meta=await getMeta(s);
  setMesh(r.mesh);U.tC.value=r.C||dummy;U.tN.value=r.N||dummy;U.t1.value=r.t1||dummy;U.t2.value=r.t2||dummy;
  if(r.fx){U.b.value.set(...r.fx.b);U.til.value.set(...r.fx.til);U.scr.value.set(...r.fx.scr)}else U.b.value.set(0,0);
  yaw=Math.PI/2;pit=0.05;idle=true;cp();
  const name=meta.name||pretty(s.folder),tag=meta.tag||guessTag(s);
- $('nm').textContent=name;$('ds').textContent=meta.description||'';$('tg').textContent=tag;$('tg').style.display=tag?'':'none';
+ $('nm').textContent=name;$('ds').textContent=meta.description||'';$('warn').textContent=(r.warn.length||r.notes.some(n=>/illisible/.test(n)))?'Attention : '+r.warn.concat(r.notes.filter(n=>/illisible/.test(n))).join(' · '):'';$('tg').textContent=tag;$('tg').style.display=tag?'':'none';
  $('an').textContent='Animé';$('an').style.display=r.fx?'':'none';$('badge').textContent=(tag?tag+' · ':'')+(r.fx?'Animé':'Statique');$('play').style.display=r.fx?'':'none';
  document.querySelectorAll('.card').forEach(c=>c.classList.toggle('on',c.dataset.id===s.id));
  $('load').style.opacity=0;setTimeout(()=>{if(my===token)$('load').style.display='none'},300);
