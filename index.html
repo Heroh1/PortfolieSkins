@@ -151,13 +151,26 @@ function setMesh(M){g.setAttribute('position',new THREE.BufferAttribute(M.pos,3)
  g.computeBoundingSphere();g.computeBoundingBox();g.boundingBox.getCenter(ctr);g.boundingBox.getSize(sz);frame()}
 // ---------- liste des skins (dossiers de /skins)
 let SKINS=[];
-async function listSkins(){let files=null;
- try{const r=await fetch('https://api.github.com/repos/'+REPO+'/git/trees/'+BRANCH+'?recursive=1');if(r.ok){const j=await r.json();files=j.tree.filter(x=>x.type==='blob'&&x.path.startsWith(ROOT)).map(x=>x.path.slice(ROOT.length))}}catch(e){}
+let LIB=[];
+async function listSkins(){let files=null,all=null;
+ try{const r=await fetch('https://api.github.com/repos/'+REPO+'/git/trees/'+BRANCH+'?recursive=1');if(r.ok){const j=await r.json();all=j.tree.filter(x=>x.type==='blob').map(x=>x.path);files=all.filter(p=>p.startsWith(ROOT)).map(p=>p.slice(ROOT.length))}}catch(e){}
  if(!files||!files.some(f=>f.includes('/'))){try{const r=await fetch(ROOT+'manifest.json');if(r.ok){const m=await r.json();files=m.files}}catch(e){}}
  if(!files)throw new Error('liste des skins introuvable');
- const by={};for(const f of files){const i=f.indexOf('/');if(i<0)continue;const d=f.slice(0,i);(by[d]=by[d]||[]).push(f.slice(i+1))}
- return Object.keys(by).sort((a,b)=>a.localeCompare(b)).map(d=>({id:d,folder:d,files:by[d]}))}
-const urlOf=(s,p)=>ROOT+encodeURIComponent(s.folder)+'/'+p.split('/').map(encodeURIComponent).join('/');
+ const grp=(fl,root)=>{const by={};for(const f of fl){const i=f.indexOf('/');if(i<0)continue;const d=f.slice(0,i);(by[d]=by[d]||[]).push(f.slice(i+1))}
+  return Object.keys(by).sort((a,b)=>a.localeCompare(b)).map(d=>({id:d,folder:d,files:by[d],root}))};
+ LIB=all?grp(all.filter(p=>p.startsWith('armes/')).map(p=>p.slice(6)),'armes/'):[];
+ return grp(files,ROOT)}
+const norm=x=>(x||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+// retrouve le modele dans la bibliotheque d'armes : par nom de .dme demande, sinon par nom d'arme dans les fichiers du skin
+function libFind(s,dmeName){const want=(dmeName||'').toLowerCase().split(/[\\/]/).pop();
+ if(want)for(const l of LIB){const p=l.files.find(f=>f.toLowerCase().split('/').pop()===want);if(p)return {l,p}}
+ const hay=norm(s.folder+' '+s.files.join(' '));let best=null;
+ for(const l of LIB){const k=norm(l.folder);if(k.length>=2&&hay.includes(k)&&(!best||k.length>norm(best.folder).length))best=l}
+ if(!best)return null;const c=best.files.filter(f=>/\.(dme|obj)$/i.test(f));
+ let p=null;const ad=best.files.find(f=>/\.adr$/i.test(f));
+ if(ad){try{return {l:best,p:null,adr:ad}}catch(e){}}
+ p=c.find(f=>/lod0|1p/i.test(f))||c[0];return p?{l:best,p}:null}
+const urlOf=(s,p)=>(s.root||ROOT)+encodeURIComponent(s.folder)+'/'+p.split('/').map(encodeURIComponent).join('/');
 function fileMap(s){const m=new Map();for(const p of s.files){const b=p.split('/').pop().toLowerCase();if(!m.has(b))m.set(b,p)}return m}
 async function getMeta(s){if(s.meta)return s.meta;s.meta={};const p=s.files.find(f=>f.toLowerCase()==='skin.json');if(p)try{s.meta=await (await fetch(urlOf(s,p))).json()}catch(e){}return s.meta}
 const pretty=n=>n.replace(/[_]+/g,' ').replace(/\s+/g,' ').trim();
@@ -182,6 +195,10 @@ async function buildSkin(s){const map=fileMap(s),res={notes:[],warn:[]};
  let mp=dmeName&&map.get(dmeName.toLowerCase());
  if(!mp){const c=s.files.filter(f=>/\.(dme|obj)$/i.test(f));mp=c.find(f=>/lod0|1p/i.test(f))||c[0]}
  if(mp)try{mesh=await tryMesh(mp);res.notes.push('mesh '+mp.split('/').pop())}catch(e){res.notes.push('mesh illisible ('+(e.message||e)+')')}
+ if(!mesh&&LIB.length){const hit=libFind(s,dmeName);if(hit){try{let lp=hit.p;
+  if(!lp&&hit.adr){const ad=new DOMParser().parseFromString(await ftext(hit.l,hit.adr),'text/xml');const b=ad.getElementsByTagName('Base')[0];const bn=b&&b.getAttribute('fileName');
+   const lm=fileMap(hit.l);lp=bn&&lm.get(bn.toLowerCase());if(!lp){const c=hit.l.files.filter(f=>/\.(dme|obj)$/i.test(f));lp=c.find(f=>/lod0|1p/i.test(f))||c[0]}}
+  if(lp){mesh=/\.obj$/i.test(lp)?parseOBJ(await ftext(hit.l,lp)):parseDME(await fbuf(hit.l,lp));res.notes.push('mesh bibliotheque '+hit.l.folder)}}catch(e){res.notes.push('mesh bibliotheque illisible ('+(e.message||e)+')')}}}
  if(!mesh){const n=((dmeName||'')+' '+s.files.join(' ')).toLowerCase();const k=/m24/.test(n)?'m24':/ak47|ak_47/.test(n)?'ak':null;if(k){mesh=BUILTIN[k];res.notes.push('mesh integre '+k)}}
  if(!mesh)throw new Error('Aucun modele (.dme/.obj) lisible dans ce dossier');
  res.mesh=mesh;
