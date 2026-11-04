@@ -177,8 +177,10 @@ const norm=x=>(x||'').toLowerCase().replace(/[^a-z0-9]/g,'');
 const stem=p=>(p||'').split(/[\\/]/).pop().replace(/\.[^.]*$/,'').toLowerCase();
 const isModel=f=>/\.(dme|obj|glb)$/i.test(f);
 
-async function libIndex(){if(LIBIDX)return LIBIDX;LIBIDX=[];const p=LIB.files.find(f=>/(^|\/)index\.csv$/i.test(f));if(!p)return LIBIDX;
- try{const t=await ftext(LIB,p);const L=t.split(/\r?\n/).slice(1);for(const l of L){const c=l.split(',');if(c.length<5)continue;LIBIDX.push({adr:c[0],mesh:stem(c[1]),tex:[c[2],c[3],c[4]].map(stem).filter(Boolean)})}}catch(e){}return LIBIDX}
+async function libIndex(){if(LIBIDX)return LIBIDX;LIBIDX=[];
+ for(const p of LIB.files.filter(f=>/(^|\/)index\.csv$/i.test(f))){
+  try{const t=await ftext(LIB,p);for(const l of t.split(/\r?\n/).slice(1)){const c=l.split(',');if(c.length<5)continue;LIBIDX.push({adr:c[0],mesh:stem(c[1]),tex:[c[2],c[3],c[4]].map(stem).filter(Boolean)})}}catch(e){}}
+ return LIBIDX}
 // retrouve le modele dans la bibliotheque d'armes
 async function libFind(s,dmeName){const M=LIB.files.filter(isModel);if(!M.length)return null;
  const byStem=st=>{const c=M.filter(f=>stem(f)===st);return c.find(f=>/\.glb$/i.test(f))||c[0]};
@@ -187,7 +189,7 @@ async function libFind(s,dmeName){const M=LIB.files.filter(isModel);if(!M.length
  if(idx.length){let best=null,sc=0;for(const r of idx){const n=r.tex.filter(t=>mine.has(t)).length;if(n>sc){sc=n;best=r}}
   if(best){const p=byStem(best.mesh);if(p)return p}}
  const hay=norm(s.folder+' '+s.files.join(' '));let bp=null,bl=0;
- for(const f of M){const k=norm(stem(f).replace(/lod\d+$/,'').replace(/^weapons?_?/,''));if(k.length>=2&&hay.includes(k)&&k.length>bl){bl=k.length;bp=f}}
+ for(const f of M){const k=norm(stem(f).replace(/lod\d+$/,'').replace(/^(weapons?|survivormale)_?/,''));if(k.length>=2&&hay.includes(k)&&k.length>bl){bl=k.length;bp=f}}
  return bp}
 const urlOf=(s,p)=>(s.root||ROOT)+(s.folder===null?'':encodeURIComponent(s.folder)+'/')+p.split('/').map(encodeURIComponent).join('/');
 function fileMap(s){const m=new Map();for(const p of s.files){const b=p.split('/').pop().toLowerCase();if(!m.has(b))m.set(b,p)}return m}

@@ -35,7 +35,7 @@ ol{margin:6px 0 0;padding-left:20px}li{margin:3px 0}
 </div>
 
 <div class="box" id="s2" style="opacity:.5;pointer-events:none"><h2>2. Ajouter</h2>
-<label>Type</label><select id="dest"><option value="skins/">Un skin (textures, animation, icones…)</option><option value="armes/">Bibliotheque d'armes (modeles .glb / .dme / .obj + index.csv)</option></select>
+<label>Type</label><select id="dest"><option value="skins/">Un skin (textures, animation, icones…)</option><option value="armes/">Bibliotheque de modeles (armes, vetements, casques... : .glb / .dme / .obj + index.csv)</option></select>
 <p class="hint" id="destHint">Si un skin n'a pas de .dme/.obj, le site va chercher le modele dans la bibliotheque d'armes (par le nom de l'arme dans le nom de ses fichiers, ex: M24, AK47).</p>
 <div class="drop" id="drop">Glisse ici le <b>dossier</b> du skin ou son <b>.zip / .rar</b><div class="hint" style="margin-top:8px">ou utilise les boutons</div>
 <div class="row" style="justify-content:center;margin-top:10px"><button id="pickDir">Choisir un dossier</button><button id="pickZip">Choisir un .zip / .rar</button></div></div>
@@ -106,7 +106,8 @@ var commit=async function commit(entries,msg){const ref=await gh('/git/ref/heads
 async function del(d,paths){log('Suppression de '+d+'…');try{await commit(paths.map(p=>({path:p,mode:'100644',type:'blob',sha:null})),'Supprime '+d);log('Supprimé. Le site se met à jour dans environ 1 minute.');refresh()}catch(e){log('Erreur : '+e.message)}}
 // ---- selection
 const JUNK=/(^|\/)(thumbs\.db|\.ds_store|desktop\.ini|__macosx)(\/|$)/i;
-function setPick(folder,files){files=files.filter(f=>!JUNK.test(f.path));PICK={folder,files};
+const LIBF=/\.(glb|dme|obj|adr|dma)$|(^|\/)index\.csv$/i;const libOnly=fs=>ROOT==='armes/'?fs.filter(f=>LIBF.test(f.path)):fs;
+function setPick(folder,files){files=libOnly(files.filter(f=>!JUNK.test(f.path)));PICK={folder,files};if(ROOT==='armes/')folder='bibliotheque';
  const tot=files.reduce((a,f)=>a+f.blob.size,0);const big=files.find(f=>f.blob.size>95*1024*1024);
  $('selInfo').textContent=files.length+' fichiers, '+(tot/1048576).toFixed(1)+' Mo'+(big?'  (fichier trop gros : '+big.path+')':'');
  $('fname').value=folder.replace(/[^\w.\-]+/g,'_');$('sel').style.display='block';$('drop').style.display='none'}
@@ -142,7 +143,7 @@ dz.addEventListener('drop',async e=>{try{const items=[...e.dataTransfer.items];c
 // ---- envoi
 const b64=async blob=>{const buf=new Uint8Array(await blob.arrayBuffer());let s='';const C=0x8000;for(let i=0;i<buf.length;i+=C)s+=String.fromCharCode.apply(null,buf.subarray(i,i+C));return btoa(s)};
 $('go').onclick=async()=>{if(!PICK)return;const name=$('fname').value.trim().replace(/[^\w.\-]+/g,'_');if(!name){alert('Donne un nom de dossier');return}
- const files=PICK.files.slice();const meta={};if($('title').value.trim())meta.name=$('title').value.trim();if($('tag').value.trim())meta.tag=$('tag').value.trim();if($('desc').value.trim())meta.description=$('desc').value.trim();
+ const files=libOnly(PICK.files).slice();const meta={};if($('title').value.trim())meta.name=$('title').value.trim();if($('tag').value.trim())meta.tag=$('tag').value.trim();if($('desc').value.trim())meta.description=$('desc').value.trim();
  if(Object.keys(meta).length&&!files.some(f=>/^skin\.json$/i.test(f.path)))files.push({path:'skin.json',blob:new Blob([JSON.stringify(meta,null,1)])});
  const pv=$('prev').files[0];if(pv){const ext=(pv.name.split('.').pop()||'png').toLowerCase();files.push({path:'preview.'+ext,blob:pv})}
  if(files.some(f=>f.blob.size>95*1024*1024)){alert('Un fichier dépasse 95 Mo, GitHub le refuse.');return}
@@ -158,6 +159,6 @@ $('go').onclick=async()=>{if(!PICK)return;const name=$('fname').value.trim().rep
  $('go').disabled=false;$('cancel').disabled=false};
 if(parent!==window){const b=$('back');if(b)b.style.display='none';document.body.style.paddingTop='44px'}
 const _commit=commit;commit=async function(e,m){await _commit(e,m);try{parent.postMessage({type:'skins-changed'},'*')}catch(_){}};
-$('dest').onchange=()=>{ROOT=$('dest').value};
+$('dest').onchange=()=>{ROOT=$('dest').value;if(PICK){const f=PICK.files;setPick(PICK.folder,f)}};
 checkTok();
 </script></body></html>
