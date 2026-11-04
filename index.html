@@ -11,7 +11,7 @@ header{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-be
 h1{margin:0;font-size:clamp(28px,5vw,44px);letter-spacing:-.02em;line-height:1;font-weight:700}
 h1 span{color:var(--acc)}
 .sub{color:var(--mut);font-family:var(--mono);font-size:12.5px;text-transform:uppercase;letter-spacing:.08em}
-.stage{position:relative;background:radial-gradient(120% 90% at 50% 0%,#1d222c 0%,#12151b 60%,#0d0f13 100%);border:1px solid var(--line);border-radius:14px;overflow:hidden;aspect-ratio:2/1;width:100%}
+.stage.bg1{background:radial-gradient(110% 90% at 50% 25%,#7b8190 0%,#4d525e 55%,#2c2f37 100%)}.stage.bg2{background:radial-gradient(110% 90% at 50% 25%,#e9ebf0 0%,#c3c7d0 60%,#9aa0ac 100%)}.stage{position:relative;background:radial-gradient(120% 90% at 50% 0%,#1d222c 0%,#12151b 60%,#0d0f13 100%);border:1px solid var(--line);border-radius:14px;overflow:hidden;aspect-ratio:2/1;width:100%}
 canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab;touch-action:none}
 canvas:active{cursor:grabbing}
 .ctl{position:absolute;left:12px;right:12px;bottom:12px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;pointer-events:none}
@@ -48,7 +48,7 @@ footer{margin-top:36px;color:var(--mut);font:12px var(--mono)}
 <div class="wrap">
 <header><h1>Kishi <span>/</span> Skins</h1><div class="hdr"><div class="sub">H1Z1 · skins d'armes · projet ROTK</div><button id="adm" class="admb">Admin</button></div></header>
 <div class="stage" id="stage"><canvas id="c"></canvas><div class="badge" id="badge"></div><div class="load" id="load">Chargement…</div>
-<div class="ctl"><button id="play" class="on">Animation</button><button id="vl">Gauche</button><button id="vr">Droite</button><button id="vt">Dessus</button><button id="fs">Plein écran</button><span class="hint">Glisse pour tourner · molette pour zoomer</span></div></div>
+<div class="ctl"><button id="play" class="on">Animation</button><button id="vl">Gauche</button><button id="vr">Droite</button><button id="vt">Dessus</button><button id="bgb">Fond</button><button id="fs">Plein écran</button><span class="hint">Glisse pour tourner · molette pour zoomer</span></div></div>
 <div class="info"><div><h2 id="nm"></h2><p id="ds"></p><p id="warn" style="color:#ff9b7b;font-size:13px"></p></div><div class="row"><span class="chip" id="tg"></span><span class="chip a" id="an"></span></div></div>
 <div class="grid" id="grid"></div>
 <footer>Aperçu 3D approximatif de l'effet animé du jeu. Chaque skin est lu directement depuis ses fichiers (.adr, .dme/.obj, textures, animation).</footer>
@@ -76,9 +76,15 @@ const g=new THREE.BufferGeometry();
 const dummy=new THREE.DataTexture(new Uint8Array([0,0,0,255]),1,1);dummy.needsUpdate=true;
 const U={tC:{value:dummy},tN:{value:dummy},tS:{value:dummy},lit:{value:0},litS:{value:0},t1:{value:dummy},t2:{value:dummy},time:{value:0},b:{value:new THREE.Vector2(0,0)},til:{value:new THREE.Vector4(3.5,3.5,5,5)},scr:{value:new THREE.Vector4(-0.08,0.012,-0.18,0.02)},cal:{value:1},lum:{value:1}};
 const mat=new THREE.ShaderMaterial({uniforms:U,side:THREE.DoubleSide,
-vertexShader:`varying vec2 vUv;varying vec3 vN;varying vec3 vV;
-void main(){vUv=vec2(uv.x,1.0-uv.y);vN=normalize(normalMatrix*normal);vec4 mv=modelViewMatrix*vec4(position,1.0);vV=-mv.xyz;gl_Position=projectionMatrix*mv;}`,
-fragmentShader:`precision highp float;varying vec2 vUv;varying vec3 vN;varying vec3 vV;
+vertexShader:`varying vec2 vUv;varying vec3 vN;varying vec3 vV;varying vec3 vWN;varying vec3 vWP;
+void main(){vWN=normal;vWP=position;vUv=vec2(uv.x,1.0-uv.y);vN=normalize(normalMatrix*normal);vec4 mv=modelViewMatrix*vec4(position,1.0);vV=-mv.xyz;gl_Position=projectionMatrix*mv;}`,
+fragmentShader:`precision highp float;varying vec2 vUv;varying vec3 vN;varying vec3 vV;varying vec3 vWN;varying vec3 vWP;
+vec3 envMap(vec3 d,float r){float up=d.y*0.5+0.5;vec3 c=mix(vec3(0.16,0.15,0.16),vec3(0.62,0.66,0.74),smoothstep(0.0,1.0,up));
+ float sh=mix(60.0,2.0,r);
+ c+=vec3(2.2,2.1,2.0)*pow(max(dot(d,normalize(vec3(-0.7,0.6,0.55))),0.0),sh);
+ c+=vec3(0.8,0.95,1.3)*pow(max(dot(d,normalize(vec3(0.8,0.2,0.45))),0.0),sh);
+ c+=vec3(1.2,1.2,1.3)*pow(max(dot(d,normalize(vec3(0.0,0.5,-1.0))),0.0),sh);
+ c+=vec3(0.35)*pow(max(dot(d,vec3(0.0,1.0,0.0)),0.0),sh);return c;}
 uniform sampler2D tC,tN,t1,t2,tS;uniform float time,cal,lum,lit,litS;uniform vec2 b;uniform vec4 til,scr;
 void main(){
  vec3 base=texture2D(tC,vUv).rgb;
@@ -98,7 +104,12 @@ void main(){
   float dd=max(dot(nn,L1),0.0)*0.8+max(dot(nn,L2),0.0)*0.4+0.5;
   vec3 h1=normalize(L1+v),h2=normalize(L2+v);float pw=6.0+gloss*50.0;
   float spc=(pow(max(dot(nn,h1),0.0),pw)+0.5*pow(max(dot(nn,h2),0.0),pw))*gloss*(0.15+metal*0.9);
-  col=base*(1.0-metal*0.5)*(dd*lum)+mix(vec3(1.0),base*2.0,metal)*spc+rim;
+  vec3 wv=normalize(cameraPosition-vWP);
+  vec3 nw=normalize(transpose(mat3(viewMatrix))*nn);
+  float rough=clamp(0.3+0.7*sp.a,0.3,1.0);
+  float ndv=max(dot(nw,wv),0.0);vec3 F0=mix(vec3(0.05),base,metal);vec3 F=F0+(1.0-F0)*pow(1.0-ndv,5.0);
+  vec3 irr=envMap(nw,1.0);vec3 rf=envMap(reflect(-wv,nw),rough);
+  col=base*irr*0.8*(1.0-metal)*lum+rf*F*1.5+vec3(0.02)+rim;
  }else col=base*(d*lum)+rim;
  col+=a.rgb*a.a*b.x*m*cal+c.rgb*c.a*b.y*m*cal;
  gl_FragColor=vec4(col,1.0);}`});
@@ -280,10 +291,11 @@ async function init(first=true){let list;try{list=await listSkins()}catch(e){$('
   thumbFor(s).then(u=>{if(u){b.querySelector('.th').style.backgroundImage='url("'+u+'")';s.thumbDone=true}})});
  if(first){const want=decodeURIComponent(location.hash.slice(1));show(SKINS.find(x=>x.id===want)?want:SKINS[0].id,false)}else document.querySelectorAll('.card').forEach(c=>c.classList.toggle('on',cur&&c.dataset.id===cur.id))}
 let playing=true,t0=performance.now(),tacc=0;$('play').onclick=()=>{playing=!playing;$('play').classList.toggle('on',playing)};
+let bgm=0;const setBg=m=>{bgm=m;stage.classList.toggle('bg1',m===1);stage.classList.toggle('bg2',m===2)};$('bgb').onclick=()=>setBg((bgm+1)%3);
 let garment=false;
 const setV=(y,p)=>{yaw=y;pit=p;idle=false;cp()};const base0=()=>garment?0:Math.PI/2;
 $('vl').onclick=()=>setV(garment?0:Math.PI/2,0.05);$('vr').onclick=()=>setV(garment?Math.PI:-Math.PI/2,0.05);$('vt').onclick=()=>setV(garment?Math.PI/2:Math.PI/2,garment?0.05:1.5);
-function setMode(g){garment=g;$('vl').textContent=g?'Face':'Gauche';$('vr').textContent=g?'Dos':'Droite';$('vt').textContent=g?'Côté':'Dessus'}
+function setMode(g){if(g!==garment)setBg(g?1:0);garment=g;$('vl').textContent=g?'Face':'Gauche';$('vr').textContent=g?'Dos':'Droite';$('vt').textContent=g?'Côté':'Dessus'}
 $('fs').onclick=()=>{try{(stage.requestFullscreen||stage.webkitRequestFullscreen).call(stage).catch(()=>{})}catch(e){}};
 let drag=null;cv.addEventListener('contextmenu',e=>e.preventDefault());
 cv.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY,b:e.button};idle=false;cv.setPointerCapture(e.pointerId)});
