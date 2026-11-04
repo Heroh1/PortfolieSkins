@@ -74,12 +74,12 @@ const R=new THREE.WebGLRenderer({canvas:cv,antialias:true,preserveDrawingBuffer:
 const scene=new THREE.Scene(),cam=new THREE.PerspectiveCamera(30,2,0.01,10);
 const g=new THREE.BufferGeometry();
 const dummy=new THREE.DataTexture(new Uint8Array([0,0,0,255]),1,1);dummy.needsUpdate=true;
-const U={tC:{value:dummy},tN:{value:dummy},t1:{value:dummy},t2:{value:dummy},time:{value:0},b:{value:new THREE.Vector2(0,0)},til:{value:new THREE.Vector4(3.5,3.5,5,5)},scr:{value:new THREE.Vector4(-0.08,0.012,-0.18,0.02)},cal:{value:1},lum:{value:1}};
+const U={tC:{value:dummy},tN:{value:dummy},tS:{value:dummy},lit:{value:0},litS:{value:0},t1:{value:dummy},t2:{value:dummy},time:{value:0},b:{value:new THREE.Vector2(0,0)},til:{value:new THREE.Vector4(3.5,3.5,5,5)},scr:{value:new THREE.Vector4(-0.08,0.012,-0.18,0.02)},cal:{value:1},lum:{value:1}};
 const mat=new THREE.ShaderMaterial({uniforms:U,side:THREE.DoubleSide,
 vertexShader:`varying vec2 vUv;varying vec3 vN;varying vec3 vV;
 void main(){vUv=vec2(uv.x,1.0-uv.y);vN=normalize(normalMatrix*normal);vec4 mv=modelViewMatrix*vec4(position,1.0);vV=-mv.xyz;gl_Position=projectionMatrix*mv;}`,
 fragmentShader:`precision highp float;varying vec2 vUv;varying vec3 vN;varying vec3 vV;
-uniform sampler2D tC,tN,t1,t2;uniform float time,cal,lum;uniform vec2 b;uniform vec4 til,scr;
+uniform sampler2D tC,tN,t1,t2,tS;uniform float time,cal,lum,lit,litS;uniform vec2 b;uniform vec4 til,scr;
 void main(){
  vec3 base=texture2D(tC,vUv).rgb;
  float m=texture2D(tN,vUv).b;
@@ -88,7 +88,18 @@ void main(){
  vec3 n=normalize(vN);if(!gl_FrontFacing)n=-n;vec3 v=normalize(vV);
  float d=max(dot(n,normalize(vec3(0.4,0.8,0.6))),0.0)*0.7+max(dot(n,normalize(vec3(-0.6,0.2,0.5))),0.0)*0.35+0.45;
  float rim=pow(1.0-max(dot(n,v),0.0),3.0)*0.15;
- vec3 col=base*(d*lum)+rim;
+ vec3 col;
+ if(lit>0.5){
+  vec3 p=-vV;vec3 dp1=dFdx(p),dp2=dFdy(p);vec2 du1=dFdx(vUv),du2=dFdy(vUv);
+  vec3 d2=cross(dp2,n),d1=cross(n,dp1);vec3 T=d2*du1.x+d1*du2.x,B=d2*du1.y+d1*du2.y;float im=inversesqrt(max(max(dot(T,T),dot(B,B)),1e-12));
+  vec3 nm=texture2D(tN,vUv).xyz*2.0-1.0;vec3 nn=normalize(mat3(T*im,B*im,n)*vec3(nm.xy,max(nm.z,0.2)));
+  vec4 sp=litS>0.5?texture2D(tS,vUv):vec4(0.1,0.5,0.0,0.8);float metal=sp.r,gloss=1.0-sp.a;
+  vec3 L1=normalize(vec3(0.4,0.8,0.6)),L2=normalize(vec3(-0.6,0.2,0.5));
+  float dd=max(dot(nn,L1),0.0)*0.8+max(dot(nn,L2),0.0)*0.4+0.5;
+  vec3 h1=normalize(L1+v),h2=normalize(L2+v);float pw=6.0+gloss*50.0;
+  float spc=(pow(max(dot(nn,h1),0.0),pw)+0.5*pow(max(dot(nn,h2),0.0),pw))*gloss*(0.15+metal*0.9);
+  col=base*(1.0-metal*0.5)*(dd*lum)+mix(vec3(1.0),base*2.0,metal)*spc+rim;
+ }else col=base*(d*lum)+rim;
  col+=a.rgb*a.a*b.x*m*cal+c.rgb*c.a*b.y*m*cal;
  gl_FragColor=vec4(col,1.0);}`});
 scene.add(new THREE.Mesh(g,mat));
@@ -216,10 +227,10 @@ async function texFrom(s,map,name,rep,warn){const p=map.get((name||'').toLowerCa
  catch(e){if(warn)warn.push(p.split('/').pop()+' : '+(e.message||e));return null}}
 async function buildSkin(s){const map=fileMap(s),res={notes:[],warn:[]};
  const adrs=s.files.filter(f=>/\.adr$/i.test(f)).sort((a,b)=>{const k=x=>/3p|ground/i.test(x)?1:0;return k(a)-k(b)||a.length-b.length});
- let dmeName=null,cName=null,nName=null,eff=null,adrDoc=null;
+ let dmeName=null,cName=null,nName=null,sName=null,eff=null,adrDoc=null;
  if(adrs.length){adrDoc=new DOMParser().parseFromString(await ftext(s,adrs[0]),'text/xml');
   const b=adrDoc.getElementsByTagName('Base')[0];if(b)dmeName=b.getAttribute('fileName');
-  for(const a of adrDoc.getElementsByTagName('Alias')){const h=a.getAttribute('semanticHash'),t=a.getAttribute('textureName');if(h==='-1295769314')cName=t;else if(h==='789998085')nName=t}}
+  for(const a of adrDoc.getElementsByTagName('Alias')){const h=a.getAttribute('semanticHash'),t=a.getAttribute('textureName');if(h==='-1295769314')cName=t;else if(h==='789998085')nName=t;else if(h==='67211600')sName=t}}
  // mesh
  let mesh=null;const tryMesh=async p=>{return /\.obj$/i.test(p)?parseOBJ(await ftext(s,p)):/\.glb$/i.test(p)?parseGLB(await fbuf(s,p)):parseDME(await fbuf(s,p))};
  let mp=dmeName&&map.get(dmeName.toLowerCase());
@@ -232,7 +243,8 @@ async function buildSkin(s){const map=fileMap(s),res={notes:[],warn:[]};
  // textures
  if(!cName){const p=s.files.find(f=>/_c\.(dds|png|jpe?g)$/i.test(f));if(p)cName=p.split('/').pop()}
  if(!nName){const p=s.files.find(f=>/_n\.(dds|png)$/i.test(f));if(p)nName=p.split('/').pop()}
- res.C=await texFrom(s,map,cName,false,res.warn);res.N=await texFrom(s,map,nName,false,res.warn);
+ if(!sName){const p=s.files.find(f=>/_s\.(dds|png)$/i.test(f));if(p)sName=p.split('/').pop()}
+ res.C=await texFrom(s,map,cName,false,res.warn);res.S=sName?await texFrom(s,map,sName,false,null):null;res.N=await texFrom(s,map,nName,false,res.warn);
  // animation
  const xmls=await Promise.all(s.files.filter(f=>/\.xml$/i.test(f)).map(async f=>new DOMParser().parseFromString(await ftext(s,f).catch(()=>'<x/>'),'text/xml')));
  let eid=null;const el=adrDoc&&adrDoc.getElementsByTagName('EffectList')[0];
@@ -250,7 +262,7 @@ async function show(id,push){const s=SKINS.find(x=>x.id===id)||SKINS[0];if(!s||c
  if(my!==token)return;const meta=await getMeta(s);
  setMesh(r.mesh);U.tC.value=r.C||dummy;U.tN.value=r.N||dummy;U.t1.value=r.t1||dummy;U.t2.value=r.t2||dummy;
  if(r.fx){U.b.value.set(...r.fx.b);U.til.value.set(...r.fx.til);U.scr.value.set(...r.fx.scr)}else U.b.value.set(0,0);
- setMode(sz.y>=sz.z*0.8);yaw=base0();pit=0.05;idle=true;cp();
+ setMode(sz.y>=sz.z*0.8);U.tS.value=r.S||dummy;U.litS.value=r.S?1:0;U.lit.value=(garment&&!r.fx&&r.N)?1:0;yaw=base0();pit=0.05;idle=true;cp();
  const name=meta.name||pretty(s.folder),tag=meta.tag||guessTag(s);
  $('nm').textContent=name;$('ds').textContent=meta.description||'';$('warn').textContent=(r.warn.length||r.notes.some(n=>/illisible/.test(n)))?'Attention : '+r.warn.concat(r.notes.filter(n=>/illisible/.test(n))).join(' · '):'';$('tg').textContent=tag;$('tg').style.display=tag?'':'none';
  $('an').textContent='Animé';$('an').style.display=r.fx?'':'none';$('badge').textContent=(tag?tag+' · ':'')+(r.fx?'Animé':'Statique');$('play').style.display=r.fx?'':'none';
